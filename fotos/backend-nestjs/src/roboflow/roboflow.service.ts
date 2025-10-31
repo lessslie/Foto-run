@@ -84,8 +84,12 @@ this.apiUrl = apiUrl;
       });
 
       this.logger.log(
-        `Roboflow API response: ${response.data.predictions.length} detections`,
-      );
+  `Roboflow API response: ${response.data.predictions.length} detections`,
+);
+this.logger.log(
+  'Full predictions:', 
+  JSON.stringify(response.data.predictions, null, 2)
+);
 
       return response.data as RoboflowResponse;
     } catch (error) {
@@ -128,7 +132,7 @@ this.apiUrl = apiUrl;
    */
   filterByConfidence(
     detections: RoboflowDetection[],
-    minConfidence = 0.5,
+    minConfidence = 0.3,
   ): RoboflowDetection[] {
     return detections.filter(
       (detection) => detection.confidence >= minConfidence,

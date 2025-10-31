@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MulterModule } from '@nestjs/platform-express';
-import { PhotosController } from './photo.controller';  // ← sin 's'
-import { PhotosService } from './photo.service';        // ← sin 's'
+import { PhotosController } from './photo.controller';
+import { PhotosService } from './photo.service';
 import { Photo } from './photo.entity';
 import { Detection } from '../detection/entities/detection.entity';
 import { RoboflowModule } from '../roboflow/roboflow.module';
+import { OcrModule } from 'src/ocr/ocr.module';
+import { CloudinaryModule } from 'src/cloudinary/cloudinary.module';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { RoboflowModule } from '../roboflow/roboflow.module';
       dest: './uploads',
     }),
     RoboflowModule,
+    OcrModule,
+    CloudinaryModule,
   ],
   controllers: [PhotosController],
   providers: [PhotosService],

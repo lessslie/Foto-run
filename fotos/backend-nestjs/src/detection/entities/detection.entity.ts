@@ -7,7 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { Photo } from '../../photos/photo.entity';  // ← SIN /entities/
+import { Photo } from '../../photos/photo.entity';
 
 @Entity('detections')
 export class Detection {
@@ -21,8 +21,8 @@ export class Detection {
   @Column({ type: 'uuid' })
   photoId: string;
 
-  @Column({ type: 'varchar', length: 10 })
-  bibNumber: string;
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  bibNumber: string | null;
 
   @Column({ type: 'float', default: 0 })
   confidence: number;

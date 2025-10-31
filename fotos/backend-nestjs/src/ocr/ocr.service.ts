@@ -1,161 +1,212 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ImageAnalysis } from '../image-processing/image-processing.service';
+import Tesseract from 'tesseract.js';
+import sharp from 'sharp';
 
-export interface OCRCriteria {
-  confidence_threshold: number;
-  area_range: [number, number];
-  contrast_threshold: number;
-  edge_density_threshold: number;
-}
-
-export interface OCRResult {
-  plate_number: number;
-  method: string;
-  score: number;
-  analysis: ImageAnalysis;
+export interface OcrResult {
+  text: string;
+  confidence: number;
 }
 
 @Injectable()
 export class OcrService {
   private readonly logger = new Logger(OcrService.name);
 
-  private readonly knownPlates: Map<number, OCRCriteria> = new Map([
-    [341, {
-      confidence_threshold: 0.75,
-      area_range: [10000, 20000],
-      contrast_threshold: 30,
-      edge_density_threshold: 0.05,
-    }],
-    [847, {
-      confidence_threshold: 0.70,
-      area_range: [8000, 18000],
-      contrast_threshold: 25,
-      edge_density_threshold: 0.04,
-    }],
-    [123, {
-      confidence_threshold: 0.65,
-      area_range: [12000, 22000],
-      contrast_threshold: 35,
-      edge_density_threshold: 0.06,
-    }],
-    [456, {
-      confidence_threshold: 0.60,
-      area_range: [9000, 19000],
-      contrast_threshold: 28,
-      edge_density_threshold: 0.045,
-    }],
-    [789, {
-      confidence_threshold: 0.68,
-      area_range: [10000, 20000],
-      contrast_threshold: 32,
-      edge_density_threshold: 0.05,
-    }],
-    [101, {
-      confidence_threshold: 0.72,
-      area_range: [11000, 21000],
-      contrast_threshold: 30,
-      edge_density_threshold: 0.055,
-    }],
-    [202, {
-      confidence_threshold: 0.67,
-      area_range: [9500, 19500],
-      contrast_threshold: 29,
-      edge_density_threshold: 0.048,
-    }],
-    [303, {
-      confidence_threshold: 0.70,
-      area_range: [10500, 20500],
-      contrast_threshold: 31,
-      edge_density_threshold: 0.052,
-    }],
-  ]);
+  /**
+   * Extrae el número del dorsal de una región específica de la imagen
+   */
+  async extractBibNumber(
+    imagePath: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<OcrResult | null> {
+    try {
+      this.logger.log(
+        `Extracting bib number from region: x=${x}, y=${y}, w=${width}, h=${height}`,
+      );
 
-  analyzeWithIntelligentMatching(
-    confidence: number,
-    analysis: ImageAnalysis,
-  ): OCRResult | null {
-    let bestMatch: { plate: number; score: number } | null = null;
+      // Recortar la región del dorsal
+      const croppedImageBuffer = await this.cropImage(
+        imagePath,
+        x,
+        y,
+        width,
+        height,
+      );
 
-    for (const [plateNumber, criteria] of this.knownPlates.entries()) {
-      const score = this.calculateMatchScore(confidence, analysis, criteria);
-      
-      if (score > 0.5 && (!bestMatch || score > bestMatch.score)) {
-        bestMatch = { plate: plateNumber, score };
+      // Aplicar OCR con Tesseract
+      const result = await this.performOcr(croppedImageBuffer);
+
+      if (!result) {
+        return null;
       }
-    }
 
-    if (bestMatch) {
-      this.logger.log(`Coincidencia inteligente encontrada: ${bestMatch.plate} (score: ${bestMatch.score.toFixed(2)})`);
+      // Extraer solo números
+      const cleanedText = this.extractNumbers(result.text);
+
+      if (!cleanedText) {
+        this.logger.warn(`No numbers found in OCR result: "${result.text}"`);
+        return null;
+      }
+
+      this.logger.log(
+        `OCR result: "${cleanedText}" (confidence: ${result.confidence.toFixed(2)})`,
+      );
+
       return {
-        plate_number: bestMatch.plate,
-        method: 'intelligent_matching',
-        score: bestMatch.score,
-        analysis,
+        text: cleanedText,
+        confidence: result.confidence,
       };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error extracting bib number: ${errorMessage}`);
+      return null;
     }
-
-    if (confidence >= 0.60) {
-      const fallbackPlate = this.selectFallbackPlate(analysis);
-      this.logger.log(`Usando fallback: ${fallbackPlate}`);
-      return {
-        plate_number: fallbackPlate,
-        method: 'fallback',
-        score: 0.5,
-        analysis,
-      };
-    }
-
-    return null;
   }
 
-  private calculateMatchScore(
-    confidence: number,
-    analysis: ImageAnalysis,
-    criteria: OCRCriteria,
-  ): number {
-    let score = 0;
+  /**
+   * Recorta una región específica de la imagen y la preprocesa para OCR
+   * MEJORADO: Mayor resize, mejor contraste, threshold adaptativo
+   */
+  private async cropImage(
+    imagePath: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): Promise<Buffer> {
+    try {
+      // Agregar MÁS padding para mejor contexto
+      const padding = 20;
+      const left = Math.max(0, Math.round(x - width / 2 - padding));
+      const top = Math.max(0, Math.round(y - height / 2 - padding));
+      const cropWidth = Math.round(width + padding * 2);
+      const cropHeight = Math.round(height + padding * 2);
 
-    if (confidence >= criteria.confidence_threshold) {
-      score += 0.4 * (confidence / criteria.confidence_threshold);
+      // Resize MÁS GRANDE para mejor reconocimiento
+      const scaleFactor = 6;
+
+      // Preprocesamiento mejorado para OCR
+      const buffer = await sharp(imagePath)
+        .extract({
+          left,
+          top,
+          width: cropWidth,
+          height: cropHeight,
+        })
+        // Resize más grande
+        .resize(cropWidth * scaleFactor, cropHeight * scaleFactor, {
+          kernel: sharp.kernel.lanczos3,
+          fit: 'fill',
+        })
+        // Convertir a escala de grises
+        .greyscale()
+        // Normalizar histograma
+        .normalize()
+        // Aumentar contraste
+        .linear(1.5, -(128 * 0.5))
+        // Sharpen para mejor definición
+        .sharpen({
+          sigma: 1.5,
+          m1: 1,
+          m2: 2,
+        })
+        // Threshold para binarizar
+        .threshold(128, {
+          grayscale: false,
+        })
+        .toBuffer();
+
+      return buffer;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error cropping image: ${errorMessage}`);
+      throw error;
     }
-
-    const [minArea, maxArea] = criteria.area_range;
-    if (analysis.area >= minArea && analysis.area <= maxArea) {
-      score += 0.3;
-    }
-
-    if (analysis.std_intensity >= criteria.contrast_threshold) {
-      score += 0.2 * (analysis.std_intensity / criteria.contrast_threshold);
-    }
-
-    if (analysis.edge_density >= criteria.edge_density_threshold) {
-      score += 0.1 * (analysis.edge_density / criteria.edge_density_threshold);
-    }
-
-    return Math.min(score, 1.0);
   }
 
- private selectFallbackPlate(analysis: ImageAnalysis): number {
-    const plates = Array.from(this.knownPlates.keys());
+  /**
+   * Ejecuta Tesseract OCR en el buffer de imagen
+   */
+  private async performOcr(imageBuffer: Buffer): Promise<OcrResult | null> {
+    try {
+      const {
+        data: { text, confidence },
+      } = await Tesseract.recognize(imageBuffer, 'eng', {
+        logger: (info: { status: string; progress: number }) => {
+          if (info.status === 'recognizing text') {
+            this.logger.debug(
+              `OCR progress: ${Math.round(info.progress * 100)}%`,
+            );
+          }
+        },
+      });
+
+      const trimmedText = text.trim();
+      
+      // Log para debug
+      this.logger.debug(`Raw OCR text: "${trimmedText}"`);
+
+      return {
+        text: trimmedText,
+        confidence: confidence / 100,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Tesseract OCR error: ${errorMessage}`);
+      return null;
+    }
+  }
+
+  /**
+   * Extrae solo dígitos del texto OCR
+   */
+  private extractNumbers(text: string): string {
+    // Remover espacios, saltos de línea y caracteres no numéricos
+    const numbers = text.replace(/\D/g, '');
     
-    let closest = plates[0];
-    let minDiff = Infinity;
-
-    for (const plate of plates) {
-      const criteria = this.knownPlates.get(plate);
-      
-      // ✅ Validación de criteria
-      if (!criteria) continue;
-      
-      const midArea = (criteria.area_range[0] + criteria.area_range[1]) / 2;
-      const diff = Math.abs(analysis.area - midArea);
-      
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = plate;
-      }
+    // Validar que sea un número de dorsal válido (1-6 dígitos)
+    if (numbers.length > 0 && numbers.length <= 6) {
+      return numbers;
     }
 
-    return closest;
+    return '';
+  }
+
+  /**
+   * Procesa múltiples detecciones en batch
+   */
+  async extractMultipleBibNumbers(
+    imagePath: string,
+    detections: Array<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }>,
+  ): Promise<Array<OcrResult | null>> {
+    this.logger.log(
+      `Processing ${detections.length} detections with OCR`,
+    );
+
+    const results = await Promise.all(
+      detections.map((detection) =>
+        this.extractBibNumber(
+          imagePath,
+          detection.x,
+          detection.y,
+          detection.width,
+          detection.height,
+        ),
+      ),
+    );
+
+    const successfulResults = results.filter((r) => r !== null).length;
+    this.logger.log(
+      `OCR completed: ${successfulResults}/${detections.length} successful`,
+    );
+
+    return results;
   }
 }
