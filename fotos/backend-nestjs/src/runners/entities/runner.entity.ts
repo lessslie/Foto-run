@@ -21,6 +21,4 @@ export class Runner {
   @CreateDateColumn()
   created_at: Date;
 
-  @OneToMany(() => Detection, detection => detection.runner)
-  detections: Detection[];
 }

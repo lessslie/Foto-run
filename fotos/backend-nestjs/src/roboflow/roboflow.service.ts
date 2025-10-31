@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import * as fs from 'fs';
 
 export interface RoboflowDetection {
   x: number;
@@ -10,61 +11,134 @@ export interface RoboflowDetection {
   confidence: number;
   class: string;
   class_id: number;
+  detection_id: string;
 }
 
 export interface RoboflowResponse {
-  predictions: RoboflowDetection[];
+  time: number;
   image: {
     width: number;
     height: number;
   };
+  predictions: RoboflowDetection[];
 }
 
 @Injectable()
 export class RoboflowService {
   private readonly logger = new Logger(RoboflowService.name);
   private readonly apiKey: string;
-  private readonly modelId: string;
   private readonly apiUrl: string;
 
- constructor(private configService: ConfigService) {
-    // ✅ Validar que las variables existan
-    const apiKey = this.configService.get<string>('ROBOFLOW_API_KEY');
-    const modelId = this.configService.get<string>('ROBOFLOW_MODEL_ID');
-    
-    if (!apiKey || !modelId) {
-      throw new Error('Faltan configurar ROBOFLOW_API_KEY o ROBOFLOW_MODEL_ID en .env');
-    }
-    
-    this.apiKey = apiKey;
-    this.modelId = modelId;
-    this.apiUrl = `https://detect.roboflow.com/${this.modelId}`;
+  constructor(private readonly configService: ConfigService) {
+   const apiKey = this.configService.get<string>('ROBOFLOW_API_KEY');
+const apiUrl = this.configService.get<string>('ROBOFLOW_URL');
+
+if (!apiKey || !apiUrl) {
+  throw new Error(
+    'ROBOFLOW_API_KEY and ROBOFLOW_URL must be defined in .env',
+  );
+}
+
+this.apiKey = apiKey;
+this.apiUrl = apiUrl;
   }
 
-  async detectPlates(imageBuffer: Buffer): Promise<RoboflowResponse> {
+  /**
+   * Detecta dorsales en una imagen local (ruta de archivo)
+   */
+  async detectBibsFromFile(filePath: string): Promise<RoboflowResponse> {
     try {
-      this.logger.log('Enviando imagen a Roboflow API...');
+      this.logger.log(`Detecting bibs in file: ${filePath}`);
 
-      const base64Image = imageBuffer.toString('base64');
+      // Leer la imagen como base64
+      const imageBase64 = fs.readFileSync(filePath, {
+        encoding: 'base64',
+      });
 
-      const response = await axios.post(
-        this.apiUrl,
-        base64Image,
-        {
-          params: {
-            api_key: this.apiKey,
-          },
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
+      return await this.detectBibsFromBase64(imageBase64);
+    } catch (error) {
+      this.logger.error(`Error detecting bibs from file: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Detecta dorsales en una imagen en base64
+   */
+  async detectBibsFromBase64(
+    imageBase64: string,
+  ): Promise<RoboflowResponse> {
+    try {
+      this.logger.log('Sending image to Roboflow API');
+
+      const response = await axios({
+        method: 'POST',
+        url: this.apiUrl,
+        params: {
+          api_key: this.apiKey,
         },
+        data: imageBase64,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
+
+      this.logger.log(
+        `Roboflow API response: ${response.data.predictions.length} detections`,
       );
 
-      this.logger.log(`Roboflow detectó ${response.data.predictions.length} dorsales`);
-      return response.data;
+      return response.data as RoboflowResponse;
     } catch (error) {
-      this.logger.error('Error al llamar a Roboflow API:', error.message);
-      throw new Error(`Roboflow API error: ${error.message}`);
+      this.logger.error(`Error calling Roboflow API: ${error.message}`);
+      throw error;
     }
+  }
+
+  /**
+   * Detecta dorsales en una imagen desde URL
+   */
+  async detectBibsFromUrl(imageUrl: string): Promise<RoboflowResponse> {
+    try {
+      this.logger.log(`Detecting bibs from URL: ${imageUrl}`);
+
+      const response = await axios({
+        method: 'POST',
+        url: this.apiUrl,
+        params: {
+          api_key: this.apiKey,
+          image: imageUrl,
+        },
+      });
+
+      this.logger.log(
+        `Roboflow API response: ${response.data.predictions.length} detections`,
+      );
+
+      return response.data as RoboflowResponse;
+    } catch (error) {
+      this.logger.error(
+        `Error detecting bibs from URL: ${error.message}`,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Filtra detecciones por nivel de confianza mínimo
+   */
+  filterByConfidence(
+    detections: RoboflowDetection[],
+    minConfidence = 0.5,
+  ): RoboflowDetection[] {
+    return detections.filter(
+      (detection) => detection.confidence >= minConfidence,
+    );
+  }
+
+  /**
+   * Extrae solo los números de dorsal detectados
+   */
+  extractBibNumbers(detections: RoboflowDetection[]): string[] {
+    return detections.map((detection) => detection.class);
   }
 }

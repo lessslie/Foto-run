@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
-import { Detection } from '../../detection/entities/detection.entity';
+import { Photo } from 'src/photos/photo.entity';
 
 @Entity('users')
 export class User {
@@ -34,6 +34,6 @@ export class User {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToMany(() => Detection, (detection) => detection.user)
-  detections: Detection[];
+@OneToMany(() => Photo, (photo) => photo.uploader)
+uploadedPhotos: Photo[];
 }

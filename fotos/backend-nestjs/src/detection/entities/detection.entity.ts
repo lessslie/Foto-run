@@ -1,42 +1,50 @@
 import {
   Entity,
-  Column,
   PrimaryGeneratedColumn,
+  Column,
   CreateDateColumn,
+  UpdateDateColumn,
   ManyToOne,
   JoinColumn,
 } from 'typeorm';
-import { Runner } from '../../runners/entities/runner.entity';
-import { User } from '../../users/entities/user.entity';
+import { Photo } from '../../photos/photo.entity';  // ← SIN /entities/
 
 @Entity('detections')
 export class Detection {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ nullable: true })
-  plateNumber: string;
+  @ManyToOne(() => Photo, (photo) => photo.detections)
+  @JoinColumn({ name: 'photoId' })
+  photo: Photo;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2 })
+  @Column({ type: 'uuid' })
+  photoId: string;
+
+  @Column({ type: 'varchar', length: 10 })
+  bibNumber: string;
+
+  @Column({ type: 'float', default: 0 })
   confidence: number;
 
-  @Column()
-  imageUrl: string;
+  @Column({ type: 'float' })
+  x: number;
+
+  @Column({ type: 'float' })
+  y: number;
+
+  @Column({ type: 'float' })
+  width: number;
+
+  @Column({ type: 'float' })
+  height: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata: Record<string, any>;
 
   @CreateDateColumn()
-  detectedAt: Date;
+  createdAt: Date;
 
-  @ManyToOne(() => Runner, (runner) => runner.detections, { nullable: true })
-  @JoinColumn({ name: 'runnerId' })
-  runner: Runner;
-
-  @Column({ nullable: true })
-  runnerId: string;
-
-  @ManyToOne(() => User, (user) => user.detections, { nullable: true })
-  @JoinColumn({ name: 'userId' })
-  user: User;
-
-  @Column({ nullable: true })
-  userId: string;
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

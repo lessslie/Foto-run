@@ -1,49 +1,52 @@
 import {
   Controller,
-  Post,
   Get,
-  UseInterceptors,
-  UploadedFile,
-  BadRequestException,
   Param,
+  UseGuards,
+  Query,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DetectionService } from './detection.service';
-import { DetectionResponseDto } from './dto/detection-response.dto';
+import { Detection } from './entities/detection.entity';
 
-@Controller('detection')
+@Controller('detections')
+@UseGuards(JwtAuthGuard)
 export class DetectionController {
   constructor(private readonly detectionService: DetectionService) {}
 
-  @Post('detect-plate')
-  @UseInterceptors(FileInterceptor('image'))
-  async detectPlate(
-    @UploadedFile() file: Express.Multer.File,
-  ): Promise<DetectionResponseDto[]> {
-    if (!file) {
-      throw new BadRequestException('No se proporcionó ninguna imagen');
-    }
-
-    const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-    if (!allowedMimeTypes.includes(file.mimetype)) {
-      throw new BadRequestException('Tipo de archivo no válido. Use JPG o PNG');
-    }
-
-    return this.detectionService.detectPlates(file.buffer, file.mimetype);
-  }
-
+  /**
+   * GET /detections
+   * Obtener todas las detecciones
+   */
   @Get()
-  async findAll() {
-    return this.detectionService.findAll();
+  async findAll(): Promise<Detection[]> {
+    return await this.detectionService.findAll();
   }
 
-  @Get('runner/:runnerId')
-  async findByRunner(@Param('runnerId') runnerId: string) {
-    return this.detectionService.findByRunner(+runnerId);
+  /**
+   * GET /detections/photo/:photoId
+   * Obtener detecciones de una foto específica
+   */
+  @Get('photo/:photoId')
+  async findByPhotoId(@Param('photoId') photoId: string): Promise<Detection[]> {
+    return await this.detectionService.findByPhotoId(photoId);
   }
 
-  @Get('statistics')
+  /**
+   * GET /detections/bib/:bibNumber
+   * Obtener detecciones por número de dorsal
+   */
+  @Get('bib/:bibNumber')
+  async findByBibNumber(@Param('bibNumber') bibNumber: string): Promise<Detection[]> {
+    return await this.detectionService.findByBibNumber(bibNumber);
+  }
+
+  /**
+   * GET /detections/stats
+   * Obtener estadísticas de detecciones
+   */
+  @Get('stats')
   async getStatistics() {
-    return this.detectionService.getStatistics();
+    return await this.detectionService.getStatistics();
   }
 }

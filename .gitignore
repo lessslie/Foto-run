@@ -1,0 +1,4 @@
+frontend/node_modules/
+backend-nestjs/node_modules/
+*.env
+fotos/frontend/node_modules/
