@@ -107,14 +107,14 @@ export class DetectionService {
   async findAll(): Promise<Detection[]> {
     return this.detectionRepository.find({
       relations: ['runner'],
-      order: { detected_at: 'DESC' },
+      order: { detectedAt: 'DESC' },
     });
   }
 
   async findByRunner(runnerId: number): Promise<Detection[]> {
     return this.detectionRepository.find({
       where: { runner: { id: runnerId } },
-      order: { detected_at: 'DESC' },
+      order: { detectedAt: 'DESC' },
     });
   }
 
