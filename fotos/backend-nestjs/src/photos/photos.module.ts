@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { MulterModule } from '@nestjs/platform-express';
-import { PhotosController } from './photo.controller';
+import { PhotosController } from './photos.controller';
 import { PhotosService } from './photo.service';
 import { Photo } from './photo.entity';
 import { Detection } from '../detection/entities/detection.entity';

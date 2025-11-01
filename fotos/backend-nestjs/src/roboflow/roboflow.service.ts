@@ -31,14 +31,12 @@ export class RoboflowService {
 
   constructor(private readonly configService: ConfigService) {
    const apiKey = this.configService.get<string>('ROBOFLOW_API_KEY');
-const apiUrl = this.configService.get<string>('ROBOFLOW_URL');
+   const apiUrl = this.configService.get<string>('ROBOFLOW_URL');
 
-if (!apiKey || !apiUrl) {
-  throw new Error(
-    'ROBOFLOW_API_KEY and ROBOFLOW_URL must be defined in .env',
-  );
+    if (!apiKey || !apiUrl) {
+      throw new Error(
+    'ROBOFLOW_API_KEY and ROBOFLOW_URL must be defined in .env',);
 }
-
 this.apiKey = apiKey;
 this.apiUrl = apiUrl;
   }

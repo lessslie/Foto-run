@@ -71,9 +71,7 @@ export class CloudinaryService {
   async deleteImage(publicId: string): Promise<void> {
     try {
       this.logger.log(`Deleting image from Cloudinary: ${publicId}`);
-      
       await cloudinary.uploader.destroy(publicId);
-      
       this.logger.log(`Image deleted successfully: ${publicId}`);
     } catch (error) {
       const deleteError = error as Error;

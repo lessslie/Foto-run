@@ -130,7 +130,7 @@ export class PhotosService {
       try {
         await unlink(filePath);
         this.logger.log(`Local file deleted: ${filePath}`);
-      } catch (unlinkError) {
+      } catch {
         this.logger.warn(`Could not delete local file: ${filePath}`);
       }
 
@@ -139,14 +139,14 @@ export class PhotosService {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Error processing photo ${photoId}: ${errorMessage}`);
-      
+
       // Intentar limpiar archivo local en caso de error
       try {
         await unlink(filePath);
       } catch {
         // Ignorar error de limpieza
       }
-      
+
       throw error;
     }
   }
@@ -211,7 +211,7 @@ export class PhotosService {
         try {
           await this.cloudinaryService.deleteImage(publicId);
           this.logger.log(`Deleted from Cloudinary: ${publicId}`);
-        } catch (error) {
+        } catch {
           this.logger.warn(`Could not delete from Cloudinary: ${publicId}`);
         }
       }
@@ -222,5 +222,80 @@ export class PhotosService {
     if (result.affected === 0) {
       throw new NotFoundException(`Photo with ID ${id} not found`);
     }
+  }
+  /**
+   * Sube una foto y la procesa automáticamente
+   * Método utilizado por el controller para el endpoint de upload
+   * 
+   * @param file - Archivo subido por multer
+   * @param raceId - ID del evento deportivo
+   * @param userId - ID del usuario que sube la foto
+   * @returns Foto creada (procesamiento en background)
+   */
+  async uploadPhoto(
+    file: Express.Multer.File,
+    raceId: string,
+    userId: string,
+  ): Promise<Photo> {
+    this.logger.log(
+      `Uploading photo: ${file.originalname} for race: ${raceId} by user: ${userId}`,
+    );
+
+    // Crear registro de foto en BD
+    const photo = await this.create({
+      url: `/uploads/${file.filename}`, // URL temporal, se actualizará con Cloudinary
+      filename: file.filename,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      raceId,
+      uploadedBy: userId,
+    });
+
+    // Procesar en background (detectar dorsales + OCR)
+    // No esperamos a que termine, se procesa asíncronamente
+    this.processPhoto(photo.id, file.path).catch((error) => {
+      this.logger.error(`Failed to process photo ${photo.id}:`, error);
+    });
+
+    return photo;
+  }
+
+  /**
+   * Busca fotos por número de dorsal
+   * Alias para mantener compatibilidad con el controller
+   *
+   * @param bibNumber - Número de dorsal a buscar
+   * @returns Lista de fotos que contienen ese dorsal
+   */
+  async searchByBibNumber(bibNumber: string): Promise<Photo[]> {
+    return this.findByBibNumber(bibNumber);
+  }
+
+  /**
+   * Obtiene una foto por ID
+   * Alias para mantener compatibilidad con el controller
+   *
+   * @param id - ID de la foto
+   * @returns Foto con sus relaciones
+   */
+  async getPhotoById(id: string): Promise<Photo> {
+    return this.findOne(id);
+  }
+
+  /**
+   * Obtiene todas las fotos subidas por un fotógrafo
+   *
+   * @param photographerId - ID del fotógrafo
+   * @returns Lista de fotos subidas por el fotógrafo
+   */
+  async getPhotosByPhotographer(photographerId: string): Promise<Photo[]> {
+    this.logger.log(`Getting photos for photographer: ${photographerId}`);
+
+    return await this.photoRepository.find({
+      where: { uploadedBy: photographerId },
+      relations: ['detections', 'race'],
+      order: { createdAt: 'DESC' },
+    });
   }
 }

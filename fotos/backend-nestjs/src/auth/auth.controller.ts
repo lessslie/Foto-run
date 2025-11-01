@@ -1,107 +1,84 @@
-import {
-  Controller,
-  Post,
-  Body,
-  UseGuards,
-  Get,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiBearerAuth,
-  ApiBody,
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import type { AuthResponse, UserPayload } from './auth.service';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { LocalAuthGuard } from './guards/local-auth.guard';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { CurrentUser } from './decorators/current-user.decorator';
+import { User } from '../users/entities/user.entity';
 
-interface JwtUser {
-  id: string;
-  email: string;
-  role: string;
-}
-
-@ApiTags('auth')
+/**
+ * Controller para autenticación de usuarios
+ *
+ * Endpoints:
+ * - POST /auth/register - Registrar nuevo usuario
+ * - POST /auth/login - Iniciar sesión
+ */
+@ApiTags('Autenticación')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  /**
+   * Registra un nuevo usuario en el sistema
+   *
+   * Por defecto, el usuario se crea con rol PARTICIPANT.
+   * Para crear usuarios con otros roles, especificar el campo "role".
+   */
   @Post('register')
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Registrar nuevo usuario' })
+  @ApiOperation({
+    summary: 'Registrar nuevo usuario',
+    description:
+      'Crea un nuevo usuario en el sistema. Por defecto se asigna el rol PARTICIPANT (atleta). Para crear fotógrafos o admins, especificar el campo role.',
+  })
   @ApiResponse({
     status: 201,
-    description: 'Usuario creado exitosamente',
-    schema: {
-      example: {
-        access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        user: {
-          id: 'uuid',
-          email: 'leslie@fotorun.com',
-          name: 'Leslie',
-          role: 'user',
-        },
-      },
-    },
+    description: 'Usuario registrado exitosamente',
+    type: User,
   })
-  @ApiResponse({ status: 400, description: 'Datos inválidos' })
-  @ApiResponse({ status: 409, description: 'El email ya existe' })
-  async register(@Body() registerDto: RegisterDto): Promise<AuthResponse> {
-    return await this.authService.register(registerDto);
+  @ApiBadRequestResponse({
+    description: 'Datos de entrada inválidos (validación fallida)',
+  })
+  @ApiConflictResponse({
+    description: 'El email ya está registrado en el sistema',
+  })
+  async register(
+    @Body() registerDto: RegisterDto,
+  ): Promise<{ user: User; token: string }> {
+    return this.authService.register(registerDto);
   }
 
-  @UseGuards(LocalAuthGuard)
+  /**
+   * Inicia sesión de un usuario existente
+   *
+   * Valida las credenciales y retorna un token JWT válido por 7 días.
+   */
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Iniciar sesión' })
-  @ApiBody({ type: LoginDto })
+  @ApiOperation({
+    summary: 'Iniciar sesión',
+    description:
+      'Autentica un usuario con email y contraseña. Retorna el usuario y un token JWT válido por 7 días.',
+  })
   @ApiResponse({
     status: 200,
     description: 'Login exitoso',
-    schema: {
-      example: {
-        access_token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        user: {
-          id: 'uuid',
-          email: 'leslie@fotorun.com',
-          name: 'Leslie',
-          role: 'user',
-        },
-      },
-    },
+    type: User,
   })
-  @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
+  @ApiBadRequestResponse({
+    description: 'Datos de entrada inválidos',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Credenciales inválidas o usuario inactivo',
+  })
   async login(
     @Body() loginDto: LoginDto,
-    @CurrentUser() user: UserPayload,
-  ): Promise<AuthResponse> {
-    return await this.authService.login(user);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('profile')
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Obtener perfil del usuario autenticado' })
-  @ApiResponse({
-    status: 200,
-    description: 'Perfil obtenido exitosamente',
-    schema: {
-      example: {
-        id: 'uuid',
-        email: 'leslie@fotorun.com',
-        role: 'user',
-      },
-    },
-  })
-  @ApiResponse({ status: 401, description: 'No autorizado' })
-  getProfile(@CurrentUser() user: JwtUser): JwtUser {
-    return user;
+  ): Promise<{ user: User; token: string }> {
+    return this.authService.login(loginDto);
   }
 }

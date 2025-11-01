@@ -144,7 +144,7 @@ export class OcrService {
       });
 
       const trimmedText = text.trim();
-      
+
       // Log para debug
       this.logger.debug(`Raw OCR text: "${trimmedText}"`);
 
@@ -165,7 +165,7 @@ export class OcrService {
   private extractNumbers(text: string): string {
     // Remover espacios, saltos de línea y caracteres no numéricos
     const numbers = text.replace(/\D/g, '');
-    
+
     // Validar que sea un número de dorsal válido (1-6 dígitos)
     if (numbers.length > 0 && numbers.length <= 6) {
       return numbers;
@@ -186,9 +186,7 @@ export class OcrService {
       height: number;
     }>,
   ): Promise<Array<OcrResult | null>> {
-    this.logger.log(
-      `Processing ${detections.length} detections with OCR`,
-    );
+    this.logger.log(`Processing ${detections.length} detections with OCR`);
 
     const results = await Promise.all(
       detections.map((detection) =>
